@@ -1,7 +1,7 @@
 # 👋 Hi, I'm Abood
 
 <p align="center">
-  <img src="https://readme-typing-svg.demolab.com/?lines=Cybersecurity+Student;Linux+Enthusiast;Reverse+Engineering+Learner;Android+%26+iOS+Security+Researcher&center=true&width=600&height=45">
+  <img src="https://readme-typing-svg.demolab.com/?lines=Cybersecurity+Researcher;Linux+Enthusiast;Reverse+Engineering+Learner;Android+%26+iOS+Security+Researcher&center=true&width=600&height=45">
 </p>
 
 ---
